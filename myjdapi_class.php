@@ -8,14 +8,14 @@
  * @license BSD http://opensource.org/licenses/BSD-3-Clause
  */
 
-class MYJDAPI
+class ü
 {
     private $api_url = "http://api.jdownloader.org";
-    private $version = "1.0.20220427";
+    private $version = "1.0.20240520";
     private $rid_counter;
     private $appkey = "MYJDAPI_php";
     private $apiVer = 1;
-    private $devices;
+    private $devices = null;
     private $loginSecret;
     private $deviceSecret;
     private $sessiontoken;
@@ -25,11 +25,14 @@ class MYJDAPI
     private $SERVER_DOMAIN = "server";
     private $DEVICE_DOMAIN = "device";
     private $device_name = null;
+    private $protokoll = null;
+    private $protokollLength;
 
-    public function __construct( $email = "", $password = "", $device_name = null, $appkey = "MYJDAPI_php", $useHTTPS = false) {
-		if ($useHTTPS === true) {
+    public function __construct( $email = "", $password = "", $device_name = null, $appkey = "MYJDAPI_php", $useHTTPS = false, $protokollLength = 20) {
+		if ($useHTTPS == true) {
 			$this -> api_url = str_replace('http://', 'https://', $this -> api_url);
 		}
+        $this -> protokollLength = $protokollLength;
         $this -> rid_counter = time();
 		$this -> appkey = $appkey;
         if( ($email != "") && ($password != "")) {
@@ -59,7 +62,6 @@ class MYJDAPI
     public function getAppKeyName() {
         return $this -> appkey;
     }
-
 
     //Set device name
     public function setDeviceName( $device_name) {
@@ -148,6 +150,18 @@ class MYJDAPI
         return true;
     }
 
+    public function getAvailableDevices() {
+        if (!isset($this -> devices)) {
+            $this -> enumerateDevices();
+        }
+
+        if (isset($this -> devices)) {
+            return $this -> devices;
+        }
+
+        return false;
+    }
+
     // Call action "/device/getDirectConnectionInfos" for each devices
     // if success - setup devices with infos
     // return: true or false
@@ -166,16 +180,25 @@ class MYJDAPI
     // Send links to device using action /linkgrabberv2/addLinks
     // input: device - name of device, links - array or string of links, package_name - custom package name
     // {"url":"/linkgrabberv2/addLinks",
-    //  "params":["{\"priority\":\"DEFAULT\",\"links\":\"YOURLINK\",\"autostart\":true, \"packageName\": \"YOURPKGNAME\"}"],
+    //  "params":["{\"priority\":\"DEFAULT\",\"links\":\"YOURLINK\",\"autostart\":YOURVALUE, \"packageName\": \"YOURPKGNAME\"}"],
     //  "rid":YOURREQUESTID,"apiVer":1}
-    public function addLinks( $links, $package_name = null) {
+    public function addLinks( $links, $package_name = null, $autostart = true) {
         if( !is_array( $this -> devices)) {
             $this -> enumerateDevices();
         }
         if( is_array( $links)) {
             $links = implode( ",", $links);
         }
-        $params = '\"priority\":\"DEFAULT\",\"links\":\"'.$links.'\",\"autostart\":true, \"packageName\": \"'.$package_name.'\"';
+        $params = '\"priority\":\"DEFAULT\"';
+        $params .= ', \"links\": \"'.$links.'\"';
+        $params .= ( $autostart == true) ? ',\"autostart\":true' : ',\"autostart\":false';
+        if( isset( $package_name) && is_string( $package_name)) {
+            $package_name = trim( $package_name);
+            if ($package_name != '') {
+                $params .= ', \"packageName\": \"'.$package_name.'\"';
+                $params .= ', \"overwritePackagizerRules\":true';
+            }
+        }
         $res = $this -> callAction( "/linkgrabberv2/addLinks", $params);
         if( $res === false) {
             return false;
@@ -228,6 +251,7 @@ class MYJDAPI
         $signature = $this -> sign( $key, $query);
         $query = $query."&signature=".$signature;
         $url = $this -> api_url.$query;
+        $this -> addIntoProtokoll(['call' => 'callServer', 'url' => $url, 'params' => $params, 'key' => $key]);
         if( $params != "") {
             $res = $this -> postQuery( $url, $params, $key);
         } else {
@@ -272,6 +296,9 @@ class MYJDAPI
         } else {
             $json_data = '{"url":"'.$action.'","rid":'.$this -> getUniqueRid().',"apiVer":'.$this -> apiVer.'}';
         }
+
+        $this -> addIntoProtokoll(['call' => 'callAction', 'url' => $action, 'json_data' => $json_data]);
+
         $json_data = $this -> encrypt( $json_data, $this -> deviceEncryptionToken);
         $url = $this -> api_url.$query;
         $res = $this -> postQuery( $url, $json_data, $this -> deviceEncryptionToken);
@@ -326,6 +353,8 @@ class MYJDAPI
     // Send Payload data if $postfields not null
     // return plain response or decrypted response if $iv_key not null
     private function postQuery( $url, $postfields = false, $iv_key = false) {
+        $this -> addIntoProtokoll(['call' => 'postQuery', 'url' => $url, 'postfields' => $postfields]);
+
         $ch = curl_init();
         curl_setopt( $ch, CURLOPT_URL, $url);
         curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true);
@@ -353,5 +382,18 @@ class MYJDAPI
         }
         curl_close( $ch);
         return $response["body"];
+    }
+
+    private function addIntoProtokoll($data):void {
+        $this -> protokoll[date( 'Ymd-His-u') . '_' . uniqid()] = $data;
+        $this -> protokoll = array_slice( $this -> protokoll, ( $this -> protokollLength * -1));
+    }
+
+    public function getProtokoll( $aClear=true) {
+        $result = $this -> protokoll;
+        if ( $aClear) {
+            unset( $this -> protokoll);
+        }
+        return $result;
     }
 }
