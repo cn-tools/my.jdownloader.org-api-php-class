@@ -8,7 +8,7 @@
  * @license BSD http://opensource.org/licenses/BSD-3-Clause
  */
 
-class ü
+class MYJDAPI
 {
     private $api_url = "http://api.jdownloader.org";
     private $version = "1.0.20240520";
